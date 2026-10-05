@@ -1,0 +1,65 @@
+name: Build Windows binary
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore packages for single-file publishing
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $restoreArgs = @(
+            '.\src\RdpIconMonitor\RdpIconMonitor.csproj',
+            '--runtime', 'win-x64',
+            '-p:SelfContained=true',
+            '-p:PublishSingleFile=true'
+          )
+          dotnet restore @restoreArgs
+
+      - name: Publish Windows x64 executable
+        run: >-
+          dotnet publish .\src\RdpIconMonitor\RdpIconMonitor.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          --no-restore
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:PublishTrimmed=false
+          -p:DebugType=None
+          --output .\artifacts\RdpIconMonitor-win-x64
+
+      - name: Upload executable and companion files
+        uses: actions/upload-artifact@v7
+        with:
+          name: RdpIconMonitor-win-x64
+          path: |
+            artifacts\RdpIconMonitor-win-x64\RdpIconMonitor.exe
+            artifacts\RdpIconMonitor-win-x64\config.example.json
+            artifacts\RdpIconMonitor-win-x64\published.marker
+          if-no-files-found: error

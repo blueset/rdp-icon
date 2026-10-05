@@ -1,0 +1,22 @@
+{
+  "instances": [
+    {
+      "name": "remote-foo",
+      "hue": 300,
+      "smallText": "R",
+      "largeText": "F"
+    },
+    {
+      "name": "remote-bar",
+      "hue": 150,
+      "smallText": "R",
+      "largeText": "B"
+    },
+    {
+      "name": "local-baz",
+      "hue": 250,
+      "smallText": "L",
+      "largeText": "Z"
+    }
+  ]
+}

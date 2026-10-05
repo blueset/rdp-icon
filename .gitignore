@@ -1,0 +1,8 @@
+**/bin/
+**/obj/
+**/TestResults/
+publish/
+artifacts/
+smoke-test-artifacts/
+extracted-icons/
+README.local.md

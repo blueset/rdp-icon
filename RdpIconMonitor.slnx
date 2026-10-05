@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RdpIconMonitor/RdpIconMonitor.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RdpIconMonitor.Tests/RdpIconMonitor.Tests.csproj" />
+  </Folder>
+</Solution>

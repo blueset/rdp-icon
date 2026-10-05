@@ -1,0 +1,29 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\svg\*.svg" LogicalName="Icons.%(Filename)%(Extension)" />
+    <InternalsVisibleTo Include="RdpIconMonitor.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Svg.Skia" Version="5.2.3" />
+    <PackageReference Include="SkiaSharp" Version="4.148.0" />
+    <PackageReference Include="HarfBuzzSharp" Version="14.2.0" />
+  </ItemGroup>
+
+  <Target Name="MarkPublishedApp" AfterTargets="Publish">
+    <WriteLinesToFile File="$(PublishDir)published.marker" Lines="RdpIconMonitor" Overwrite="true" />
+    <Copy SourceFiles="..\..\config.example.json" DestinationFolder="$(PublishDir)" />
+  </Target>
+
+</Project>
