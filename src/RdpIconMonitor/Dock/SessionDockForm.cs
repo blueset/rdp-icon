@@ -15,6 +15,7 @@ internal sealed class SessionDockForm : Form
     private readonly Func<WindowIdentity, bool> minimize;
     private readonly List<(Button Action, Button Minimize)> rows = [];
     private readonly ToolTip toolTip = new();
+    private readonly Font sessionFont = new("Segoe UI", 10f, FontStyle.Bold);
     private readonly Panel headerPanel = new()
     {
         BackColor = Color.FromArgb(24, 24, 24),
@@ -138,6 +139,7 @@ internal sealed class SessionDockForm : Form
     {
         if (disposing) toolTip.Dispose();
         base.Dispose(disposing);
+        if (disposing) sessionFont.Dispose();
     }
 
     private void RebuildRows(SessionDockScreenState state)
@@ -155,7 +157,7 @@ internal sealed class SessionDockForm : Form
             {
                 AutoEllipsis = true,
                 FlatStyle = FlatStyle.Flat,
-                Font = Font,
+                Font = sessionFont,
                 Height = RowHeight,
                 TextAlign = ContentAlignment.MiddleLeft,
                 UseVisualStyleBackColor = false
@@ -196,7 +198,7 @@ internal sealed class SessionDockForm : Form
             state.Sessions.Count == 0
                 ? Scale(MinActionWidth)
                 : state.Sessions.Max(session =>
-                    TextRenderer.MeasureText((session.Current ? "\u25cf " : "") + session.Label, Font).Width + Scale(20)));
+                    TextRenderer.MeasureText((session.Current ? "\u25cf " : "") + session.Label, sessionFont).Width + Scale(20)));
         int margin = Scale(OuterMargin);
         int availableActionWidth = Math.Max(
             1,

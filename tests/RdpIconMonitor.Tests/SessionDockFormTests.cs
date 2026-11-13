@@ -1,9 +1,41 @@
 using RdpIconMonitor.Dock;
+using RdpIconMonitor.Windows;
 
 namespace RdpIconMonitor.Tests;
 
 public class SessionDockFormTests
 {
+    [Fact]
+    public void RecreatedRowsKeepTheirFontWhenFormFontChanges()
+    {
+        Exception? error = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                using var form = new SessionDockForm(_ => true, _ => true);
+                var area = Screen.PrimaryScreen!.WorkingArea;
+                SessionDockScreenState State(params string[] labels) => new(
+                    "test", area, area,
+                    labels.Select((label, index) => new SessionDockItemState(
+                        label, label, null, true, false, new WindowIdentity(index + 1, 1, 1))).ToArray());
+                form.Update(State("First"));
+                using var scaledFont = new Font("Segoe UI", 5f, FontStyle.Bold);
+                form.Font = scaledFont;
+                form.Update(State("First", "Second"));
+                var buttons = form.Controls.OfType<Button>()
+                    .Where(button => button.Text is "First" or "Second").ToArray();
+                Assert.Equal(2, buttons.Length);
+                Assert.All(buttons, button => Assert.Equal(10f, button.Font.SizeInPoints));
+            }
+            catch (Exception exception) { error = exception; }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(15)));
+        if (error is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
+    }
+
     [Theory]
     [InlineData(-100, -100, 100, 50)]
     [InlineData(240, 160, 120, 100)]
