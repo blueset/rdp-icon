@@ -17,6 +17,8 @@ internal sealed class MonitorEngine : IDisposable
     public string? Error { get; private set; }
     public bool Loaded { get; private set; }
     public int ManagedCount => controller.ManagedCount;
+    public IconConfiguration CurrentConfiguration => current;
+    public IReadOnlyList<WindowSnapshot> Snapshots => controller.LastSnapshots;
 
     public MonitorEngine(string path, Action<string> report, IWindowSystem? windowSystem = null)
     {
@@ -60,6 +62,11 @@ internal sealed class MonitorEngine : IDisposable
         Error = message;
         report(message);
     }
+
+    public bool TryActivate(string title) => controller.TryActivate(title);
+    public bool TryActivate(WindowIdentity identity) => controller.TryActivate(identity);
+    public bool TryMinimize(string title) => controller.TryMinimize(title);
+    public bool TryMinimize(WindowIdentity identity) => controller.TryMinimize(identity);
 
     public void Dispose()
     {

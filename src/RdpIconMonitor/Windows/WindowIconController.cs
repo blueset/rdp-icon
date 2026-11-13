@@ -22,6 +22,7 @@ public sealed class WindowIconController(IWindowSystem windows, IIconRepository 
     }
 
     private readonly Dictionary<WindowIdentity, Assignment> managed = [];
+    public IReadOnlyList<WindowSnapshot> LastSnapshots { get; private set; } = [];
     public int ManagedCount => managed.Count;
     public IReadOnlySet<nint> ProtectedHandles => managed.Values.SelectMany(
         assignment => assignment.Slots.SelectMany(slot => slot.Possible)).ToHashSet();
@@ -30,6 +31,7 @@ public sealed class WindowIconController(IWindowSystem windows, IIconRepository 
     {
         var rules = config.Instances.ToDictionary(rule => rule.Name, StringComparer.OrdinalIgnoreCase);
         var snapshots = windows.Enumerate();
+        LastSnapshots = snapshots;
         var desired = snapshots.Where(window => !paused && rules.ContainsKey(window.Title))
             .ToDictionary(window => window.Identity);
         foreach (var assignment in managed.Values.ToArray())
@@ -59,6 +61,54 @@ public sealed class WindowIconController(IWindowSystem windows, IIconRepository 
         }
         icons.Trim(config.Instances.Select(rule => rule.Style).ToHashSet(), ProtectedHandles);
     }
+
+    public bool TryActivate(string title)
+    {
+        foreach (var snapshot in Candidates(title))
+            if (TryActivate(snapshot.Identity)) return true;
+        return false;
+    }
+
+    public bool TryActivate(WindowIdentity identity)
+    {
+        try
+        {
+            return windows.IsSame(identity) && windows.TryActivate(identity);
+        }
+        catch (Exception error) when (error is Win32Exception or InvalidOperationException or ArgumentException)
+        {
+            report($"Window PID {identity.ProcessId}, HWND 0x{identity.Handle:X}: {error.Message}");
+            return false;
+        }
+    }
+
+    public bool TryMinimize(string title)
+    {
+        foreach (var snapshot in Candidates(title))
+            if (TryMinimize(snapshot.Identity)) return true;
+        return false;
+    }
+
+    public bool TryMinimize(WindowIdentity identity)
+    {
+        try
+        {
+            return windows.IsSame(identity) && windows.TryMinimize(identity);
+        }
+        catch (Exception error) when (error is Win32Exception or InvalidOperationException or ArgumentException)
+        {
+            report($"Window PID {identity.ProcessId}, HWND 0x{identity.Handle:X}: {error.Message}");
+            return false;
+        }
+    }
+
+    private IEnumerable<WindowSnapshot> Candidates(string title) =>
+        LastSnapshots
+            .Where(snapshot => snapshot.Title.Equals(title, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(snapshot => snapshot.Foreground)
+            .ThenBy(snapshot => snapshot.Minimized)
+            .ThenByDescending(snapshot => snapshot.Visible)
+            .ThenBy(snapshot => snapshot.ZOrder);
 
     public bool RestoreAll()
     {

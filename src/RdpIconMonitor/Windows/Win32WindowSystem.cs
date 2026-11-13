@@ -6,7 +6,16 @@ using System.Text;
 namespace RdpIconMonitor.Windows;
 
 public readonly record struct WindowIdentity(nint Handle, int ProcessId, long ProcessStartTicks);
-public sealed record WindowSnapshot(WindowIdentity Identity, string Title, int SmallSize, int LargeSize);
+public sealed record WindowSnapshot(
+    WindowIdentity Identity,
+    string Title,
+    int SmallSize,
+    int LargeSize,
+    Rectangle? Bounds = null,
+    bool Visible = true,
+    bool Minimized = false,
+    bool Foreground = false,
+    int ZOrder = int.MaxValue);
 
 public interface IWindowSystem
 {
@@ -14,6 +23,8 @@ public interface IWindowSystem
     bool IsSame(WindowIdentity window);
     nint GetIcon(WindowIdentity window, int slot);
     nint SetIcon(WindowIdentity window, int slot, nint icon);
+    bool TryActivate(WindowIdentity window) => false;
+    bool TryMinimize(WindowIdentity window) => false;
 }
 
 internal sealed class Win32WindowSystem(Action<string> report, string processName = "msrdc") : IWindowSystem
@@ -36,6 +47,8 @@ internal sealed class Win32WindowSystem(Action<string> report, string processNam
             }
         }
         var windows = new List<WindowSnapshot>();
+        nint foreground = NativeMethods.GetForegroundWindow();
+        int zOrder = 0;
         NativeMethods.EnumCallback callback = (window, _) =>
         {
             NativeMethods.GetWindowThreadProcessId(window, out var pid);
@@ -45,8 +58,25 @@ internal sealed class Win32WindowSystem(Action<string> report, string processNam
             if (title.Length == 0) return true;
             uint dpi = NativeMethods.GetDpiForWindow(window);
             if (dpi == 0) return true;
+            bool minimized = NativeMethods.IsIconic(window);
+            var placement = new NativeMethods.WINDOWPLACEMENT
+            {
+                length = (uint)Marshal.SizeOf<NativeMethods.WINDOWPLACEMENT>()
+            };
+            bool hasBounds = minimized
+                ? NativeMethods.GetWindowPlacement(window, ref placement)
+                : false;
+            NativeMethods.Rect rect = hasBounds
+                ? placement.normalPosition
+                : default;
+            hasBounds = hasBounds || NativeMethods.GetWindowRect(window, out rect);
+            Rectangle? bounds = hasBounds
+                ? Rectangle.FromLTRB(rect.Left, rect.Top, rect.Right, rect.Bottom)
+                : null;
             windows.Add(new(new(window, (int)pid, start), title.ToString(),
-                NativeMethods.GetSystemMetricsForDpi(49, dpi), NativeMethods.GetSystemMetricsForDpi(11, dpi)));
+                NativeMethods.GetSystemMetricsForDpi(49, dpi), NativeMethods.GetSystemMetricsForDpi(11, dpi),
+                bounds, NativeMethods.IsWindowVisible(window), minimized,
+                window == foreground, zOrder++));
             return true;
         };
         if (!NativeMethods.EnumWindows(callback, 0))
@@ -79,6 +109,39 @@ internal sealed class Win32WindowSystem(Action<string> report, string processNam
     {
         EnsureSame(window);
         return NativeMethods.IconMessage(window.Handle, 0x80, slot, icon);
+    }
+
+    public bool TryActivate(WindowIdentity window)
+    {
+        try
+        {
+            if (!IsSame(window)) return false;
+            NativeMethods.AllowSetForegroundWindow(-1);
+            if (NativeMethods.IsIconic(window.Handle))
+                NativeMethods.ShowWindow(window.Handle, 9);
+            NativeMethods.BringWindowToTop(window.Handle);
+            return NativeMethods.SetForegroundWindow(window.Handle);
+        }
+        catch (Exception error) when (error is Win32Exception or InvalidOperationException)
+        {
+            report($"Cannot activate window 0x{window.Handle:X}: {error.Message}");
+            return false;
+        }
+    }
+
+    public bool TryMinimize(WindowIdentity window)
+    {
+        try
+        {
+            if (!IsSame(window)) return false;
+            NativeMethods.ShowWindow(window.Handle, 6);
+            return NativeMethods.IsIconic(window.Handle);
+        }
+        catch (Exception error) when (error is Win32Exception or InvalidOperationException)
+        {
+            report($"Cannot minimize window 0x{window.Handle:X}: {error.Message}");
+            return false;
+        }
     }
 
     private void EnsureSame(WindowIdentity window)

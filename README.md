@@ -25,7 +25,7 @@ The default configuration is `%LOCALAPPDATA%\RdpIconMonitor\instances.json`. Fir
 .\publish\RdpIconMonitor.exe --config "E:\status-bar-icon\config.example.json"
 ```
 
-The example has editable colors and labels for the four connection names from the smoke test. Choosing that example applies its styles to matching windows.
+The example enables the local session dock and has editable icon colors, icon text, and dock labels for the connection names from the smoke test. Choosing that example applies its styles to matching windows and displays the dock.
 
 Only one monitor instance runs per Windows desktop session. Stop it with **Exit and restore icons** in the tray, or:
 
@@ -39,21 +39,28 @@ The stop command signals graceful shutdown; it does not forcibly kill the proces
 
 ```json
 {
+  "dock": {
+    "enabled": true,
+    "showOnAllMonitors": true
+  },
   "instances": [
     {
       "name": "remote-foo",
+      "label": "Remote Foo",
       "hue": 300,
       "smallText": "R",
       "largeText": "F"
     },
     {
       "name": "remote-bar",
+      "label": "Remote Bar",
       "hue": 150,
       "smallText": "R",
       "largeText": "B"
     },
     {
       "name": "local-baz",
+      "label": "Local Baz",
       "hue": 250,
       "smallText": "L",
       "largeText": "Z"
@@ -68,6 +75,9 @@ The stop command signals graceful shutdown; it does not forcibly kill the proces
 | `hue` | Optional finite OKLCH hue in degrees, normalized modulo 360. Missing/null keeps original colors. |
 | `smallText` | Optional left-hand text run. |
 | `largeText` | Optional right-hand text run. |
+| `label` | Optional compact session-dock label; defaults to `name`. |
+| `dock.enabled` | Optional. Enables the host-side session dock. Missing/false has no startup or UI effect. |
+| `dock.showOnAllMonitors` | Optional. Shows one dock near each monitor's clock/taskbar area instead of only the primary monitor. |
 
 Missing, null, empty, or whitespace-only text is absent. One populated field replaces the cloud by itself; both absent keep the cloud. Text must be single-line and supported by Segoe UI Variable. Unknown fields, invalid types, and duplicate names are rejected.
 
@@ -84,6 +94,14 @@ Edits reload automatically, including save-by-rename. A valid reload is rendered
 - DPI-dependent window icon dimensions are rendered separately. Intermediate dimensions use the next larger SVG template.
 
 Tiny icons and long labels can fit geometrically but become unreadable; short labels work best.
+
+## Session dock prototype
+
+The optional always-on-top dock reuses the monitor's existing `msrdc.exe` enumeration. Each screen shows only configured sessions with a visible matching window that meaningfully intersects that screen; closed, hidden, off-screen, and unconfigured windows are omitted. A visible minimized window remains associated with its historical screen bounds. The foreground/topmost visible session is highlighted, and actions target the exact window on that screen. Select a session to restore and activate it, or use its `_` button to minimize it. The dock uses `label` when supplied and otherwise displays the configured `name`. The compact dock anchors to the bottom-right of each monitor's working area until manually moved. Drag the `RDP SESSIONS` header to reposition it; the dock stays fully inside the monitor while dragging, and manual positions are clamped during refreshes. Use the header's `-` button to collapse it to the header or `+` to expand its session rows.
+
+To opt in, add `"dock": { "enabled": true, "showOnAllMonitors": true }` at the root. The dock is deliberately local-only and disabled by default; existing configurations remain valid and incur no overlay startup when the setting is absent or false.
+
+This is a host-side compatibility prototype. Exclusive/full-screen RDP can hide host windows despite `TopMost`, Windows may restrict foreground activation, and user policy or privilege boundaries can prevent activation. The dock cannot provide in-session keyboard shortcuts, and windows blocked behind another process's topmost surface may not be reachable until RDP leaves full screen. Run the monitor and `msrdc.exe` at the same privilege level.
 
 ## Previews and exported icons
 

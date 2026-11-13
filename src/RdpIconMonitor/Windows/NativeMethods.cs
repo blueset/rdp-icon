@@ -6,6 +6,33 @@ namespace RdpIconMonitor.Windows;
 
 internal static class NativeMethods
 {
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Point
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Rect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct WINDOWPLACEMENT
+    {
+        public uint length;
+        public uint flags;
+        public uint showCmd;
+        public Point minPosition;
+        public Point maxPosition;
+        public Rect normalPosition;
+    }
+
     internal delegate bool EnumCallback(nint window, nint data);
     internal delegate void EventCallback(nint hook, uint kind, nint window, int objectId, int childId, uint thread, uint time);
 
@@ -19,6 +46,24 @@ internal static class NativeMethods
     internal static extern int GetWindowTextLength(nint window);
     [DllImport("user32.dll")]
     internal static extern bool IsWindow(nint window);
+    [DllImport("user32.dll")]
+    internal static extern bool GetWindowRect(nint window, out Rect rectangle);
+    [DllImport("user32.dll")]
+    internal static extern bool GetWindowPlacement(nint window, ref WINDOWPLACEMENT placement);
+    [DllImport("user32.dll")]
+    internal static extern bool IsWindowVisible(nint window);
+    [DllImport("user32.dll")]
+    internal static extern bool IsIconic(nint window);
+    [DllImport("user32.dll")]
+    internal static extern nint GetForegroundWindow();
+    [DllImport("user32.dll")]
+    internal static extern bool ShowWindow(nint window, int command);
+    [DllImport("user32.dll")]
+    internal static extern bool AllowSetForegroundWindow(int processId);
+    [DllImport("user32.dll")]
+    internal static extern bool BringWindowToTop(nint window);
+    [DllImport("user32.dll")]
+    internal static extern bool SetForegroundWindow(nint window);
     [DllImport("user32.dll")]
     internal static extern uint GetDpiForWindow(nint window);
     [DllImport("user32.dll")]

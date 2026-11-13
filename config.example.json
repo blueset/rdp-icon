@@ -1,19 +1,26 @@
 {
+  "dock": {
+    "enabled": true,
+    "showOnAllMonitors": true
+  },
   "instances": [
     {
       "name": "remote-foo",
+      "label": "Remote Foo",
       "hue": 300,
       "smallText": "R",
       "largeText": "F"
     },
     {
       "name": "remote-bar",
+      "label": "Remote Bar",
       "hue": 150,
       "smallText": "R",
       "largeText": "B"
     },
     {
       "name": "local-baz",
+      "label": "Local Baz",
       "hue": 250,
       "smallText": "L",
       "largeText": "Z"

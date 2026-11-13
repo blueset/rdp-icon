@@ -5,13 +5,20 @@ namespace RdpIconMonitor.Configuration;
 
 public sealed record IconStyle(double? Hue, string? SmallText, string? LargeText);
 
-public sealed record IconRule(string Name, double? Hue = null, string? SmallText = null, string? LargeText = null)
+public sealed record IconRule(
+    string Name,
+    double? Hue = null,
+    string? SmallText = null,
+    string? LargeText = null,
+    string? Label = null)
 {
     [JsonIgnore]
     public IconStyle Style => new(Hue, SmallText, LargeText);
 }
 
-public sealed record IconConfiguration(IconRule[] Instances)
+public sealed record DockConfiguration(bool Enabled = false, bool ShowOnAllMonitors = false);
+
+public sealed record IconConfiguration(IconRule[] Instances, DockConfiguration? Dock = null)
 {
     public static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -40,10 +47,11 @@ public sealed record IconConfiguration(IconRule[] Instances)
             {
                 Hue = rule.Hue is double value ? (value % 360 + 360) % 360 : null,
                 SmallText = NormalizeText(rule.SmallText, rule.Name),
-                LargeText = NormalizeText(rule.LargeText, rule.Name)
+                LargeText = NormalizeText(rule.LargeText, rule.Name),
+                Label = NormalizeText(rule.Label, rule.Name)
             });
         }
-        return new(rules.ToArray());
+        return new(rules.ToArray(), config.Dock);
     }
 
     private static string? NormalizeText(string? text, string name)

@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using RdpIconMonitor.Configuration;
+using RdpIconMonitor.Dock;
 using RdpIconMonitor.Windows;
 
 namespace RdpIconMonitor;
@@ -25,9 +26,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private int reloadRequested = 1;
     private bool working;
     private bool paused;
+    private bool trayMenuOpen;
     private bool exitRequested;
     private bool disposed;
     private string? lastBalloon;
+    private SessionDockManager? dock;
 
     public TrayApplicationContext(string configPath, string userDirectory, EventWaitHandle stop)
     {
@@ -37,6 +40,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
         engine = new(configPath, diagnostics.Report);
         _ = dispatcher.Handle;
         var menu = new ContextMenuStrip();
+        menu.Opening += (_, _) => trayMenuOpen = true;
+        menu.Closed += (_, _) =>
+        {
+            trayMenuOpen = false;
+            RequestWork();
+        };
         status = new("Starting") { Enabled = false };
         pause = new("Pause", null, (_, _) =>
         {
@@ -115,6 +124,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             if (restoreOnly && restored)
             {
                 diagnostics.Report("All managed icon assignments restored; exiting.");
+                dock?.Dispose();
+                dock = null;
                 events.Dispose();
                 engine.Dispose();
                 watcher.Dispose();
@@ -133,6 +144,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             tray.Icon = engine.Error is null ? SystemIcons.Application : SystemIcons.Warning;
             if (engine.Error is { } error) ShowError(error);
             else lastBalloon = null;
+            UpdateDock();
         }
         catch (Exception error) when (error is Win32Exception or IOException or InvalidDataException or UnauthorizedAccessException or InvalidOperationException or ArgumentException)
         {
@@ -153,6 +165,28 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             diagnostics.Report(error.ToString());
             ShowError(error.Message);
+        }
+    }
+
+    private void UpdateDock()
+    {
+        if (trayMenuOpen) return;
+        try
+        {
+            if (engine.CurrentConfiguration.Dock?.Enabled != true)
+            {
+                dock?.Dispose();
+                dock = null;
+                return;
+            }
+            dock ??= new(engine.TryActivate, engine.TryMinimize, diagnostics.Report);
+            dock.Update(engine.CurrentConfiguration, engine.Snapshots);
+        }
+        catch (Exception error) when (error is Win32Exception or InvalidOperationException or ArgumentException or ObjectDisposedException)
+        {
+            diagnostics.Report($"Session dock unavailable; icon monitoring continues: {error.Message}");
+            dock?.Dispose();
+            dock = null;
         }
     }
 
