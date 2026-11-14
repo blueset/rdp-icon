@@ -179,8 +179,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 dock = null;
                 return;
             }
-            dock ??= new(engine.TryActivate, engine.TryMinimize, diagnostics.Report);
-            dock.Update(engine.CurrentConfiguration, engine.Snapshots);
+            dock ??= new(engine.TryActivate, engine.TryMinimize, diagnostics.Report, RequestWork);
+            dock.Update(engine.CurrentConfiguration, engine.Snapshots, engine.HostWindows);
         }
         catch (Exception error) when (error is Win32Exception or InvalidOperationException or ArgumentException or ObjectDisposedException)
         {

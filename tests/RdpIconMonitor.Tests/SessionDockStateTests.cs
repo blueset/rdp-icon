@@ -82,6 +82,108 @@ public class SessionDockStateTests
         Assert.True(session.Current);
     }
 
+    [Fact]
+    public void IncludesHostAppsAndSelectsCurrentAcrossRdpAndHostWindows()
+    {
+        var config = Configuration() with
+        {
+            HostApps =
+            [
+                new("Teams", "ms-teams", "Teams", 200, true),
+                new("Outlook", "olk", "Mail", 40)
+            ]
+        };
+        var rdp = Snapshot(1, "One", new(20, 20, 500, 500), zOrder: 5);
+        var teams = HostSnapshot("Teams", 2, new(600, 100, 300, 300), foreground: true, zOrder: 1);
+        var outlook = HostSnapshot("Outlook", 3, new(100, 100, 300, 300), minimized: true, zOrder: 2);
+
+        var state = SessionDockState.Create(
+            "screen",
+            new(0, 0, 1000, 800),
+            new(0, 0, 1000, 760),
+            config,
+            [rdp],
+            [outlook, teams],
+            snapshot => snapshot.Configuration.TaskbarAlerts &&
+                snapshot.Configuration.Name == "Teams");
+
+        Assert.Collection(state.Sessions,
+            first => Assert.False(first.Current),
+            teamsItem =>
+            {
+                Assert.Equal("Teams", teamsItem.Label);
+                Assert.True(teamsItem.Current);
+                Assert.True(teamsItem.Alerting);
+                Assert.Equal(teams.Window.Identity, teamsItem.Identity);
+            },
+            outlookItem =>
+            {
+                Assert.Equal("Mail", outlookItem.Label);
+                Assert.False(outlookItem.Current);
+                Assert.False(outlookItem.Alerting);
+            });
+    }
+
+    [Fact]
+    public void HostAppRowsRequireTheirConfiguredMainWindowSnapshot()
+    {
+        var config = Configuration() with
+        {
+            HostApps = [new("Teams", "ms-teams")]
+        };
+        var state = SessionDockState.Create(
+            "screen",
+            new(0, 0, 1000, 800),
+            new(0, 0, 1000, 760),
+            config,
+            [],
+            [HostSnapshot("Another configuration", 10, new(10, 10, 300, 300))]);
+
+        Assert.Empty(state.Sessions);
+    }
+
+    [Fact]
+    public void OmitsDisabledHostAppsAndTheirAlerts()
+    {
+        var disabled = new DockHostApp("Teams", "ms-teams", TaskbarAlerts: true, Enabled: false);
+        var config = Configuration() with { HostApps = [disabled] };
+        bool checkedAlert = false;
+
+        var state = SessionDockState.Create(
+            "screen",
+            new(0, 0, 1000, 800),
+            new(0, 0, 1000, 760),
+            config,
+            [],
+            [new(disabled, Snapshot(
+                10,
+                "Teams",
+                new(10, 10, 300, 300),
+                foreground: true))],
+            _ =>
+            {
+                checkedAlert = true;
+                return true;
+            });
+
+        Assert.Empty(state.Sessions);
+        Assert.False(checkedAlert);
+    }
+
+    [Fact]
+    public void MinimizedHostWindowOffAllScreensUsesPrimaryMonitorBounds()
+    {
+        var primary = new Rectangle(0, 0, 1920, 1080);
+        var bounds = HostWindowSystem.ResolveScreenBounds(
+            new(28, -718, 319, 215),
+            minimized: true,
+            [primary],
+            primary);
+
+        Assert.True(Rectangle.Intersect(primary, bounds).Width >= 32);
+        Assert.True(Rectangle.Intersect(primary, bounds).Height >= 32);
+    }
+
     private static WindowSnapshot Snapshot(
         int handle,
         string title,
@@ -100,4 +202,16 @@ public class SessionDockStateTests
             minimized,
             foreground,
             zOrder);
+
+    private static HostWindowSnapshot HostSnapshot(
+        string name,
+        int handle,
+        Rectangle bounds,
+        bool minimized = false,
+        bool foreground = false,
+        int zOrder = 0) =>
+        new(
+            new(name, name, name == "Teams" ? "Teams" : name, 200, true),
+            Snapshot(handle, "Actual window title", bounds, minimized: minimized,
+                foreground: foreground, zOrder: zOrder));
 }

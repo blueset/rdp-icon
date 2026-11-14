@@ -43,6 +43,30 @@ The stop command signals graceful shutdown; it does not forcibly kill the proces
     "enabled": true,
     "showOnAllMonitors": true
   },
+  "hostApps": [
+    {
+      "name": "Copilot App",
+      "process": "github",
+      "label": "Copilot",
+      "hue": 220,
+      "enabled": true
+    },
+    {
+      "name": "Microsoft Teams",
+      "process": "ms-teams",
+      "label": "Teams",
+      "hue": 230,
+      "taskbarAlerts": true,
+      "enabled": true
+    },
+    {
+      "name": "Outlook",
+      "process": "olk",
+      "label": "Outlook",
+      "hue": 210,
+      "enabled": true
+    }
+  ],
   "instances": [
     {
       "name": "remote-foo",
@@ -76,6 +100,13 @@ The stop command signals graceful shutdown; it does not forcibly kill the proces
 | `smallText` | Optional left-hand text run. |
 | `largeText` | Optional right-hand text run. |
 | `label` | Optional compact session-dock label; defaults to `name`. |
+| `hostApps` | Optional array of local applications shown in the dock. Missing/null is empty. |
+| `hostApps[].name` | Required unique logical dock name. |
+| `hostApps[].process` | Required process name without `.exe`; all processes in the current desktop session are considered. |
+| `hostApps[].enabled` | Optional. Includes the host app in dock enumeration and display when true; defaults to true. Disabled apps are omitted entirely. |
+| `hostApps[].label` | Optional dock label; defaults to `name`. |
+| `hostApps[].hue` | Optional finite OKLCH hue, normalized modulo 360. |
+| `hostApps[].taskbarAlerts` | Optional. Blinks the dock row in response to taskbar flash notifications; defaults to false. |
 | `dock.enabled` | Optional. Enables the host-side session dock. Missing/false has no startup or UI effect. |
 | `dock.showOnAllMonitors` | Optional. Shows one dock near each monitor's clock/taskbar area instead of only the primary monitor. |
 
@@ -97,7 +128,9 @@ Tiny icons and long labels can fit geometrically but become unreadable; short la
 
 ## Session dock prototype
 
-The optional always-on-top dock reuses the monitor's existing `msrdc.exe` enumeration. Each screen shows only configured sessions with a visible matching window that meaningfully intersects that screen; closed, hidden, off-screen, and unconfigured windows are omitted. A visible minimized window remains associated with its historical screen bounds. The foreground/topmost visible session is highlighted, and actions target the exact window on that screen. Select a session to restore and activate it, or use its `_` button to minimize it. The dock uses `label` when supplied and otherwise displays the configured `name`. The compact dock anchors to the bottom-right of each monitor's working area until manually moved. Drag the `RDP SESSIONS` header to reposition it; the dock stays fully inside the monitor while dragging, and manual positions are clamped during refreshes. Use the header's `-` button to collapse it to the header or `+` to expand its session rows.
+The optional always-on-top dock reuses the monitor's existing `msrdc.exe` enumeration and can include local applications from `hostApps`. Apps with `enabled: false` are excluded from host-window enumeration, display, and taskbar alerts. For each matching local process, only `Process.MainWindowHandle` is eligible; secondary, pop-up, and notification windows are ignored. Each screen shows only configured sessions with a visible matching window that meaningfully intersects that screen; closed, hidden, off-screen, and unconfigured windows are omitted. A visible minimized window remains associated with its historical screen bounds. The foreground/topmost visible session is highlighted across both RDP and host rows, and actions target the exact window on that screen. Select a session to restore and activate it, or use its `_` button to minimize it. The dock uses `label` when supplied and otherwise displays the configured `name`. The compact dock anchors to the bottom-right of each monitor's working area until manually moved. Drag the `SESSION DOCK` header to reposition it; the dock stays fully inside the monitor while dragging, and manual positions are clamped during refreshes. Use the header's `-` button to collapse it to the header or `+` to expand its session rows.
+
+For `taskbarAlerts`, the app installs a best-effort Windows shell hook and blinks the corresponding main-window row briefly when Windows reports a taskbar flash. If shell-hook registration is unavailable, normal dock enumeration and activation continue and the diagnostic log records the limitation. Host-app enumeration is isolated from icon reconciliation: a host process disappearing or being inaccessible cannot disable RDP icon monitoring.
 
 To opt in, add `"dock": { "enabled": true, "showOnAllMonitors": true }` at the root. The dock is deliberately local-only and disabled by default; existing configurations remain valid and incur no overlay startup when the setting is absent or false.
 

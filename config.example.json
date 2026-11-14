@@ -3,6 +3,30 @@
     "enabled": true,
     "showOnAllMonitors": true
   },
+  "hostApps": [
+    {
+      "name": "Copilot App",
+      "process": "github",
+      "label": "Copilot",
+      "hue": 220,
+      "enabled": true
+    },
+    {
+      "name": "Microsoft Teams",
+      "process": "ms-teams",
+      "label": "Teams",
+      "hue": 230,
+      "taskbarAlerts": true,
+      "enabled": true
+    },
+    {
+      "name": "Outlook",
+      "process": "olk",
+      "label": "Outlook",
+      "hue": 210,
+      "enabled": true
+    }
+  ],
   "instances": [
     {
       "name": "remote-foo",

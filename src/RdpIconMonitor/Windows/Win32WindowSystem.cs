@@ -51,6 +51,7 @@ internal sealed class Win32WindowSystem(Action<string> report, string processNam
         int zOrder = 0;
         NativeMethods.EnumCallback callback = (window, _) =>
         {
+            int order = zOrder++;
             NativeMethods.GetWindowThreadProcessId(window, out var pid);
             if (!processes.TryGetValue((int)pid, out var start)) return true;
             var title = new StringBuilder(NativeMethods.GetWindowTextLength(window) + 1);
@@ -76,7 +77,7 @@ internal sealed class Win32WindowSystem(Action<string> report, string processNam
             windows.Add(new(new(window, (int)pid, start), title.ToString(),
                 NativeMethods.GetSystemMetricsForDpi(49, dpi), NativeMethods.GetSystemMetricsForDpi(11, dpi),
                 bounds, NativeMethods.IsWindowVisible(window), minimized,
-                window == foreground, zOrder++));
+                window == foreground, order));
             return true;
         };
         if (!NativeMethods.EnumWindows(callback, 0))

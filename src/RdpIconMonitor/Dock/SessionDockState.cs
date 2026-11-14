@@ -9,7 +9,8 @@ internal sealed record SessionDockItemState(
     double? Hue,
     bool Available,
     bool Current,
-    WindowIdentity Identity);
+    WindowIdentity Identity,
+    bool Alerting = false);
 
 internal sealed record SessionDockScreenState(
     string DeviceName,
@@ -24,25 +25,39 @@ internal static class SessionDockState
         Rectangle bounds,
         Rectangle workingArea,
         IconConfiguration config,
-        IReadOnlyList<WindowSnapshot> snapshots)
+        IReadOnlyList<WindowSnapshot> snapshots,
+        IReadOnlyList<HostWindowSnapshot>? hostSnapshots = null,
+        Func<HostWindowSnapshot, bool>? isAlerting = null)
     {
-        var matching = snapshots
+        var rdpWindows = snapshots
             .Where(snapshot => snapshot.Visible &&
                 snapshot.Bounds is not null &&
                 HasMeaningfulIntersection(bounds, snapshot.Bounds.Value))
             .ToArray();
-        var current = matching
+        var hostWindows = (hostSnapshots ?? [])
+            .Where(snapshot => snapshot.Window.Visible &&
+                snapshot.Window.Bounds is not null &&
+                HasMeaningfulIntersection(bounds, snapshot.Window.Bounds.Value))
+            .ToArray();
+        var current = rdpWindows
             .Where(snapshot => !snapshot.Minimized &&
                 config.Instances.Any(rule =>
                     rule.Name.Equals(snapshot.Title, StringComparison.OrdinalIgnoreCase)))
+            .Concat(hostWindows
+                .Where(snapshot => snapshot.Configuration.Enabled &&
+                    !snapshot.Window.Minimized &&
+                    (config.HostApps ?? []).Any(app =>
+                        app.Enabled &&
+                        app.Name.Equals(snapshot.Configuration.Name, StringComparison.OrdinalIgnoreCase)))
+                .Select(snapshot => snapshot.Window))
             .OrderByDescending(snapshot => snapshot.Foreground)
             .ThenBy(snapshot => snapshot.ZOrder)
             .FirstOrDefault();
-        var sessions = config.Instances
+        var rdpSessions = config.Instances
             .Select(rule => new
             {
                 Rule = rule,
-                Window = matching
+                Window = rdpWindows
                     .Where(snapshot =>
                         snapshot.Title.Equals(rule.Name, StringComparison.OrdinalIgnoreCase))
                     .OrderByDescending(snapshot => snapshot.Foreground)
@@ -59,7 +74,31 @@ internal static class SessionDockState
                 current?.Identity == match.Window!.Identity,
                 match.Window.Identity))
             .ToArray();
-        return new(deviceName, bounds, workingArea, sessions);
+        var appSessions = (config.HostApps ?? [])
+            .Where(app => app.Enabled)
+            .Select(app => new
+            {
+                App = app,
+                Host = hostWindows
+                    .Where(snapshot => snapshot.Configuration.Enabled &&
+                        snapshot.Configuration.Name.Equals(
+                            app.Name, StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(snapshot => snapshot.Window.Foreground)
+                    .ThenBy(snapshot => snapshot.Window.Minimized)
+                    .ThenBy(snapshot => snapshot.Window.ZOrder)
+                    .FirstOrDefault()
+            })
+            .Where(match => match.Host is not null)
+            .Select(match => new SessionDockItemState(
+                match.App.Name,
+                match.App.Label ?? match.App.Name,
+                match.App.Hue,
+                true,
+                current?.Identity == match.Host!.Window.Identity,
+                match.Host.Window.Identity,
+                isAlerting?.Invoke(match.Host) == true))
+            .ToArray();
+        return new(deviceName, bounds, workingArea, [.. rdpSessions, .. appSessions]);
     }
 
     private static bool HasMeaningfulIntersection(Rectangle screen, Rectangle window)

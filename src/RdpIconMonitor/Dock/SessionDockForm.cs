@@ -15,6 +15,7 @@ internal sealed class SessionDockForm : Form
     private readonly Func<WindowIdentity, bool> minimize;
     private readonly List<(Button Action, Button Minimize)> rows = [];
     private readonly ToolTip toolTip = new();
+    private readonly System.Windows.Forms.Timer alertTimer = new() { Interval = 400 };
     private readonly Font sessionFont = new("Segoe UI", 10f, FontStyle.Bold);
     private readonly Panel headerPanel = new()
     {
@@ -27,7 +28,7 @@ internal sealed class SessionDockForm : Form
         Font = new("Segoe UI", 9.5f, FontStyle.Bold),
         ForeColor = Color.FromArgb(205, 211, 216),
         Padding = new(6, 0, 4, 0),
-        Text = "RDP SESSIONS",
+        Text = "SESSION DOCK",
         TextAlign = ContentAlignment.MiddleLeft
     };
     private readonly Button toggle = new()
@@ -43,6 +44,7 @@ internal sealed class SessionDockForm : Form
     private bool dragging;
     private bool dragMoved;
     private bool userPositioned;
+    private bool alertOn;
     private Point dragCursorOffset;
 
     public SessionDockForm(
@@ -51,6 +53,11 @@ internal sealed class SessionDockForm : Form
     {
         this.activate = activate;
         this.minimize = minimize;
+        alertTimer.Tick += (_, _) =>
+        {
+            alertOn = !alertOn;
+            RefreshRowColors();
+        };
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = Color.FromArgb(24, 24, 24);
         Font = new("Segoe UI", 10f, FontStyle.Bold);
@@ -112,6 +119,7 @@ internal sealed class SessionDockForm : Form
             RebuildRows(state);
             LayoutRows(state);
             Position(state);
+            UpdateAlertTimer(state);
             if (state.Sessions.Count == 0)
             {
                 Visible = false;
@@ -137,7 +145,11 @@ internal sealed class SessionDockForm : Form
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) toolTip.Dispose();
+        if (disposing)
+        {
+            alertTimer.Dispose();
+            toolTip.Dispose();
+        }
         base.Dispose(disposing);
         if (disposing) sessionFont.Dispose();
     }
@@ -230,12 +242,7 @@ internal sealed class SessionDockForm : Form
             int top = headerHeight + margin + index * (rowHeight + Scale(RowGap));
             action.Tag = session.Identity;
             action.Text = session.Current ? $"\u25cf {session.Label}" : session.Label;
-            action.BackColor = baseColor;
-            action.ForeColor = Color.White;
-            action.FlatAppearance.BorderColor = session.Current
-                ? Color.White
-                : Color.FromArgb(75, 81, 87);
-            action.FlatAppearance.BorderSize = session.Current ? 2 : 1;
+            ApplyRowColors(action, session, baseColor);
             action.Width = actionWidth;
             action.Height = rowHeight;
             action.Location = new(margin, top);
@@ -252,6 +259,50 @@ internal sealed class SessionDockForm : Form
             minimizeButton.Visible = !collapsed;
             minimizeButton.AccessibleName = $"Minimize {session.Label}";
         }
+    }
+
+    private void UpdateAlertTimer(SessionDockScreenState state)
+    {
+        bool hasAlert = state.Sessions.Any(session => session.Alerting);
+        if (hasAlert)
+        {
+            if (!alertTimer.Enabled)
+            {
+                alertOn = true;
+                alertTimer.Start();
+                RefreshRowColors();
+            }
+        }
+        else
+        {
+            alertTimer.Stop();
+            alertOn = false;
+            RefreshRowColors();
+        }
+    }
+
+    private void RefreshRowColors()
+    {
+        if (currentState is null) return;
+        for (int index = 0; index < Math.Min(rows.Count, currentState.Sessions.Count); index++)
+        {
+            var session = currentState.Sessions[index];
+            var baseColor = session.Hue is double hue
+                ? ColorTranslator.FromHtml(OklchColor.Rotate("#0078D4", hue))
+                : Color.FromArgb(70, 86, 100);
+            ApplyRowColors(rows[index].Action, session, baseColor);
+        }
+    }
+
+    private void ApplyRowColors(Button button, SessionDockItemState session, Color baseColor)
+    {
+        bool flash = session.Alerting && alertOn;
+        button.BackColor = flash ? Color.FromArgb(255, 185, 0) : baseColor;
+        button.ForeColor = flash ? Color.Black : Color.White;
+        button.FlatAppearance.BorderColor = flash || session.Current
+            ? Color.White
+            : Color.FromArgb(75, 81, 87);
+        button.FlatAppearance.BorderSize = flash || session.Current ? 2 : 1;
     }
 
     private int Scale(int logicalPixels) =>

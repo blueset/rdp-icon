@@ -83,6 +83,12 @@ internal static class NativeMethods
         uint process, uint thread, uint flags);
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern bool UnhookWinEvent(nint hook);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern uint RegisterWindowMessage(string message);
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern bool RegisterShellHookWindow(nint window);
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern bool DeregisterShellHookWindow(nint window);
 
     internal static nint IconMessage(nint window, uint message, int slot, nint value)
     {
