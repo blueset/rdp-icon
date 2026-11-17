@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Runtime.InteropServices;
 using RdpIconMonitor.Rendering;
 using RdpIconMonitor.Windows;
 
@@ -126,6 +128,7 @@ internal sealed class SessionDockForm : Form
                 return;
             }
             if (!Visible) Show();
+            EnsureTopMost();
         }
         finally
         {
@@ -331,6 +334,15 @@ internal sealed class SessionDockForm : Form
             Location = Clamp(Location, state.WorkingArea, Size);
         }
         previousWorkingArea = state.WorkingArea;
+    }
+
+    private void EnsureTopMost()
+    {
+        if (NativeMethods.SetWindowPos(Handle, -1, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010))
+            return;
+        throw new Win32Exception(
+            Marshal.GetLastWin32Error(),
+            "Cannot keep the session dock above RDP windows.");
     }
 
     internal static Point DefaultLocation(Rectangle workingArea, Size size, int margin) =>

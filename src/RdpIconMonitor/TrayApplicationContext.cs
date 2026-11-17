@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using Microsoft.Win32;
 using RdpIconMonitor.Configuration;
 using RdpIconMonitor.Dock;
 using RdpIconMonitor.Windows;
@@ -92,6 +93,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             dispatcher.BeginInvoke(() => ShowError(message));
         });
         events = new(RequestWork);
+        SystemEvents.PowerModeChanged += PowerModeChanged;
         timer.Tick += (_, _) =>
         {
             if (stop.WaitOne(0)) RequestExit();
@@ -105,6 +107,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
     }
 
     private void RequestWork() => Interlocked.Exchange(ref workRequested, 1);
+    private void PowerModeChanged(object? sender, PowerModeChangedEventArgs args)
+    {
+        if (args.Mode != PowerModes.Resume) return;
+        Interlocked.Exchange(ref reloadRequested, 1);
+        RequestWork();
+    }
     private void RequestExit()
     {
         exitRequested = true;
@@ -127,6 +135,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 dock?.Dispose();
                 dock = null;
                 events.Dispose();
+                SystemEvents.PowerModeChanged -= PowerModeChanged;
                 engine.Dispose();
                 watcher.Dispose();
                 timer.Stop();

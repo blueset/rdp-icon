@@ -4,7 +4,11 @@ using RdpIconMonitor.Rendering;
 
 namespace RdpIconMonitor.Windows;
 
-public sealed class WindowIconController(IWindowSystem windows, IIconRepository icons, Action<string> report)
+public sealed class WindowIconController(
+    IWindowSystem windows,
+    IIconRepository icons,
+    Action<string> report,
+    Action<string>? diagnosticOnly = null)
 {
     private sealed class Slot
     {
@@ -57,7 +61,7 @@ public sealed class WindowIconController(IWindowSystem windows, IIconRepository 
                 var style = rules[snapshot.Title].Style;
                 Apply(assignment, 0, icons.Get(style, snapshot.SmallSize));
                 Apply(assignment, 1, icons.Get(style, snapshot.LargeSize));
-            });
+            }, suppressIconReadTimeout: true);
         }
         icons.Trim(config.Instances.Select(rule => rule.Style).ToHashSet(), ProtectedHandles);
     }
@@ -175,12 +179,19 @@ public sealed class WindowIconController(IWindowSystem windows, IIconRepository 
         managed.Remove(assignment.Identity);
     }
 
-    private void Attempt(Assignment assignment, Action action)
+    private void Attempt(Assignment assignment, Action action, bool suppressIconReadTimeout = false)
     {
         try { action(); }
         catch (Exception error) when (error is Win32Exception or InvalidOperationException or IOException or InvalidDataException or ArgumentException)
         {
-            report($"{assignment.Title} (PID {assignment.Identity.ProcessId}, HWND 0x{assignment.Identity.Handle:X}): {error.Message}");
+            string message = $"{assignment.Title} (PID {assignment.Identity.ProcessId}, HWND 0x{assignment.Identity.Handle:X}): {error.Message}";
+            if (suppressIconReadTimeout &&
+                error is Win32Exception win32 &&
+                win32.NativeErrorCode == 1460 &&
+                win32.Message.Contains("Icon message 0x7F", StringComparison.OrdinalIgnoreCase))
+                (diagnosticOnly ?? report)(message);
+            else
+                report(message);
         }
     }
 }

@@ -64,6 +64,15 @@ internal static class NativeMethods
     internal static extern bool BringWindowToTop(nint window);
     [DllImport("user32.dll")]
     internal static extern bool SetForegroundWindow(nint window);
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern bool SetWindowPos(
+        nint window,
+        nint insertAfter,
+        int x,
+        int y,
+        int width,
+        int height,
+        uint flags);
     [DllImport("user32.dll")]
     internal static extern uint GetDpiForWindow(nint window);
     [DllImport("user32.dll")]

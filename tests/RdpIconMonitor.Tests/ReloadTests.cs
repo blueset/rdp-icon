@@ -5,6 +5,29 @@ namespace RdpIconMonitor.Tests;
 
 public class ReloadTests
 {
+    private sealed class TransientFailureWindows : IWindowSystem
+    {
+        public bool Fail = true;
+        private readonly WindowIdentity id = new(1, 1, 1);
+        private readonly nint[] icons = [SystemIcons.Information.Handle, SystemIcons.Information.Handle];
+        public IReadOnlyList<WindowSnapshot> Enumerate() => [new(id, "test", 16, 32)];
+        public bool IsSame(WindowIdentity identity) => identity == id;
+        public nint GetIcon(WindowIdentity identity, int slot)
+        {
+            if (Fail)
+                throw new System.ComponentModel.Win32Exception(
+                    1460,
+                    "Icon message 0x7F failed for HWND 0x1, slot 0.");
+            return icons[slot];
+        }
+        public nint SetIcon(WindowIdentity identity, int slot, nint icon)
+        {
+            var previous = icons[slot];
+            icons[slot] = icon;
+            return previous;
+        }
+    }
+
     private sealed class TestWindows : IWindowSystem
     {
         private static readonly WindowIdentity Id = new(1, 1, 1);
@@ -52,8 +75,71 @@ public class ReloadTests
             Assert.Equal(new[] { SystemIcons.Information.Handle, SystemIcons.Information.Handle }, windows.Icons);
             Assert.NotEmpty(errors);
         }
+
         finally
         {
+            engine.Run(true, true, false);
+            File.Delete(path);
+            Directory.Delete(folder);
+        }
+    }
+
+    [Fact]
+    public void TransientIconReadErrorsRemainDiagnosticOnly()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "RdpIconTransient-" + Guid.NewGuid());
+        Directory.CreateDirectory(folder);
+        string path = Path.Combine(folder, "instances.json");
+        File.WriteAllText(path, """{"instances":[{"name":"test","hue":150}]}""");
+        var windows = new TransientFailureWindows();
+        var errors = new List<string>();
+        using var engine = new MonitorEngine(path, errors.Add, windows);
+        try
+        {
+            engine.Run(false, false, true);
+            Assert.Null(engine.Error);
+            engine.Run(false, false, false);
+            Assert.Null(engine.Error);
+            engine.Run(false, false, false);
+            Assert.Null(engine.Error);
+            engine.Run(false, false, false);
+            Assert.Null(engine.Error);
+            windows.Fail = false;
+            engine.Run(false, false, false);
+            Assert.Null(engine.Error);
+            Assert.NotEmpty(errors);
+        }
+        finally
+        {
+            windows.Fail = false;
+            engine.Run(true, true, false);
+            File.Delete(path);
+            Directory.Delete(folder);
+        }
+    }
+
+    [Fact]
+    public void IconReadErrorsDuringGracefulRestoreSurfaceImmediately()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "RdpIconRestore-" + Guid.NewGuid());
+        Directory.CreateDirectory(folder);
+        string path = Path.Combine(folder, "instances.json");
+        File.WriteAllText(path, """{"instances":[{"name":"test","hue":150}]}""");
+        var windows = new TransientFailureWindows { Fail = false };
+        var errors = new List<string>();
+        using var engine = new MonitorEngine(path, errors.Add, windows);
+        try
+        {
+            engine.Run(false, false, true);
+            Assert.Equal(1, engine.ManagedCount);
+            windows.Fail = true;
+            Assert.False(engine.Run(true, true, false));
+            Assert.Contains("PID 1", engine.Error);
+            Assert.NotEmpty(errors);
+        }
+        finally
+        {
+            windows.Fail = false;
             engine.Run(true, true, false);
             File.Delete(path);
             Directory.Delete(folder);

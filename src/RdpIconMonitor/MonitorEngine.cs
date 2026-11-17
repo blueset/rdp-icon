@@ -16,6 +16,8 @@ internal sealed class MonitorEngine : IDisposable
     private IconConfiguration current = new([]);
     private string? attemptedContent;
     private string? reloadError;
+    private string? passWarning;
+    private int consecutiveWarningPasses;
     public string? Error { get; private set; }
     public bool Loaded { get; private set; }
     public int ManagedCount => controller.ManagedCount;
@@ -31,14 +33,24 @@ internal sealed class MonitorEngine : IDisposable
     {
         this.path = path;
         this.report = report;
-        controller = new(windowSystem ?? new Win32WindowSystem(Report), icons, Report);
-        hostWindows = hostWindowSystem ?? new HostWindowSystem(Report);
+        controller = new(
+            windowSystem ?? new Win32WindowSystem(RecordWarning),
+            icons,
+            RecordWarning,
+            RecordDiagnostic);
+        hostWindows = hostWindowSystem ?? new HostWindowSystem(RecordWarning);
     }
 
     public bool Run(bool paused, bool exit, bool forceReload)
     {
         Error = reloadError;
-        if (exit) return controller.RestoreAll();
+        passWarning = null;
+        if (exit)
+        {
+            bool restored = controller.RestoreAll();
+            UpdateError(immediate: true);
+            return restored;
+        }
         Reload(forceReload);
         controller.Reconcile(current, paused || !Loaded);
         var enabledHostApps = current.HostApps?.Where(app => app.Enabled).ToArray() ?? [];
@@ -50,14 +62,29 @@ internal sealed class MonitorEngine : IDisposable
             }
             catch (Exception error) when (error is Win32Exception or InvalidOperationException or ArgumentException)
             {
-                Report($"Cannot enumerate host application windows; previous dock entries remain: {error.Message}");
+                RecordWarning($"Cannot enumerate host application windows; previous dock entries remain: {error.Message}");
             }
         }
         else
         {
             HostWindows = [];
         }
+        UpdateError();
         return false;
+    }
+
+    private void UpdateError(bool immediate = false)
+    {
+        if (passWarning is null)
+        {
+            consecutiveWarningPasses = 0;
+            Error = reloadError;
+        }
+        else
+        {
+            consecutiveWarningPasses++;
+            Error = immediate || consecutiveWarningPasses >= 3 ? passWarning : reloadError;
+        }
     }
 
     private void Reload(bool force)
@@ -86,6 +113,14 @@ internal sealed class MonitorEngine : IDisposable
         Error = message;
         report(message);
     }
+
+    private void RecordWarning(string message)
+    {
+        passWarning = message;
+        report(message);
+    }
+
+    private void RecordDiagnostic(string message) => report(message);
 
     public bool TryActivate(string title) => controller.TryActivate(title);
     public bool TryActivate(WindowIdentity identity) =>
