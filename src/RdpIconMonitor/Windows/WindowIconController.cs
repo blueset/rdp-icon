@@ -4,7 +4,11 @@ using RdpIconMonitor.Rendering;
 
 namespace RdpIconMonitor.Windows;
 
-public sealed class WindowIconController(IWindowSystem windows, IIconRepository icons, Action<string> report)
+public sealed class WindowIconController(
+    IWindowSystem windows,
+    IIconRepository icons,
+    Action<string> report,
+    Action<string>? diagnosticOnly = null)
 {
     private sealed class Slot
     {
@@ -22,6 +26,7 @@ public sealed class WindowIconController(IWindowSystem windows, IIconRepository 
     }
 
     private readonly Dictionary<WindowIdentity, Assignment> managed = [];
+    public IReadOnlyList<WindowSnapshot> LastSnapshots { get; private set; } = [];
     public int ManagedCount => managed.Count;
     public IReadOnlySet<nint> ProtectedHandles => managed.Values.SelectMany(
         assignment => assignment.Slots.SelectMany(slot => slot.Possible)).ToHashSet();
@@ -30,6 +35,7 @@ public sealed class WindowIconController(IWindowSystem windows, IIconRepository 
     {
         var rules = config.Instances.ToDictionary(rule => rule.Name, StringComparer.OrdinalIgnoreCase);
         var snapshots = windows.Enumerate();
+        LastSnapshots = snapshots;
         var desired = snapshots.Where(window => !paused && rules.ContainsKey(window.Title))
             .ToDictionary(window => window.Identity);
         foreach (var assignment in managed.Values.ToArray())
@@ -55,10 +61,58 @@ public sealed class WindowIconController(IWindowSystem windows, IIconRepository 
                 var style = rules[snapshot.Title].Style;
                 Apply(assignment, 0, icons.Get(style, snapshot.SmallSize));
                 Apply(assignment, 1, icons.Get(style, snapshot.LargeSize));
-            });
+            }, suppressIconReadTimeout: true);
         }
         icons.Trim(config.Instances.Select(rule => rule.Style).ToHashSet(), ProtectedHandles);
     }
+
+    public bool TryActivate(string title)
+    {
+        foreach (var snapshot in Candidates(title))
+            if (TryActivate(snapshot.Identity)) return true;
+        return false;
+    }
+
+    public bool TryActivate(WindowIdentity identity)
+    {
+        try
+        {
+            return windows.IsSame(identity) && windows.TryActivate(identity);
+        }
+        catch (Exception error) when (error is Win32Exception or InvalidOperationException or ArgumentException)
+        {
+            report($"Window PID {identity.ProcessId}, HWND 0x{identity.Handle:X}: {error.Message}");
+            return false;
+        }
+    }
+
+    public bool TryMinimize(string title)
+    {
+        foreach (var snapshot in Candidates(title))
+            if (TryMinimize(snapshot.Identity)) return true;
+        return false;
+    }
+
+    public bool TryMinimize(WindowIdentity identity)
+    {
+        try
+        {
+            return windows.IsSame(identity) && windows.TryMinimize(identity);
+        }
+        catch (Exception error) when (error is Win32Exception or InvalidOperationException or ArgumentException)
+        {
+            report($"Window PID {identity.ProcessId}, HWND 0x{identity.Handle:X}: {error.Message}");
+            return false;
+        }
+    }
+
+    private IEnumerable<WindowSnapshot> Candidates(string title) =>
+        LastSnapshots
+            .Where(snapshot => snapshot.Title.Equals(title, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(snapshot => snapshot.Foreground)
+            .ThenBy(snapshot => snapshot.Minimized)
+            .ThenByDescending(snapshot => snapshot.Visible)
+            .ThenBy(snapshot => snapshot.ZOrder);
 
     public bool RestoreAll()
     {
@@ -125,12 +179,19 @@ public sealed class WindowIconController(IWindowSystem windows, IIconRepository 
         managed.Remove(assignment.Identity);
     }
 
-    private void Attempt(Assignment assignment, Action action)
+    private void Attempt(Assignment assignment, Action action, bool suppressIconReadTimeout = false)
     {
         try { action(); }
         catch (Exception error) when (error is Win32Exception or InvalidOperationException or IOException or InvalidDataException or ArgumentException)
         {
-            report($"{assignment.Title} (PID {assignment.Identity.ProcessId}, HWND 0x{assignment.Identity.Handle:X}): {error.Message}");
+            string message = $"{assignment.Title} (PID {assignment.Identity.ProcessId}, HWND 0x{assignment.Identity.Handle:X}): {error.Message}";
+            if (suppressIconReadTimeout &&
+                error is Win32Exception win32 &&
+                win32.NativeErrorCode == 1460 &&
+                win32.Message.Contains("Icon message 0x7F", StringComparison.OrdinalIgnoreCase))
+                (diagnosticOnly ?? report)(message);
+            else
+                report(message);
         }
     }
 }

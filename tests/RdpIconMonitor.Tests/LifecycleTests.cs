@@ -12,6 +12,8 @@ public class LifecycleTests
         public WindowIdentity Id = new(handle, 1, 10);
         public string Title = title;
         public bool Exists = true;
+        public bool Foreground;
+        public int ZOrder = int.MaxValue;
         public int SmallSize = 16;
         public int LargeSize = 32;
         public readonly nint[] Icons = [101, 102];
@@ -22,8 +24,12 @@ public class LifecycleTests
         public readonly List<FakeWindow> Items = [];
         public int? FailSlot;
         public bool CompleteBeforeFailure;
+        public WindowIdentity? Activated;
+        public WindowIdentity? Minimized;
         public IReadOnlyList<WindowSnapshot> Enumerate() => Items.Where(item => item.Exists)
-            .Select(item => new WindowSnapshot(item.Id, item.Title, item.SmallSize, item.LargeSize)).ToArray();
+            .Select(item => new WindowSnapshot(
+                item.Id, item.Title, item.SmallSize, item.LargeSize,
+                new Rectangle(0, 0, 500, 500), true, false, item.Foreground, item.ZOrder)).ToArray();
         public bool IsSame(WindowIdentity window) => Items.Any(item => item.Exists && item.Id == window);
         public nint GetIcon(WindowIdentity window, int slot) => Items.Single(item => item.Exists && item.Id == window).Icons[slot];
         public nint SetIcon(WindowIdentity window, int slot, nint icon)
@@ -37,6 +43,16 @@ public class LifecycleTests
             }
             item.Icons[slot] = icon;
             return previous;
+        }
+        public bool TryActivate(WindowIdentity window)
+        {
+            Activated = window;
+            return true;
+        }
+        public bool TryMinimize(WindowIdentity window)
+        {
+            Minimized = window;
+            return true;
         }
     }
 
@@ -211,5 +227,42 @@ public class LifecycleTests
             Assert.Empty(icons.Values);
         }
         Assert.Equal(0, controller.ManagedCount);
+    }
+
+    [Fact]
+    public void ActivationUsesExactCaseInsensitiveTitleAndPrefersForegroundWindow()
+    {
+        var windows = new FakeWindows();
+        windows.Items.AddRange([
+            new(1, "Server") { ZOrder = 0 },
+            new(2, "server") { Foreground = true, ZOrder = 3 },
+            new(3, "server-extra") { Foreground = true, ZOrder = 0 }
+        ]);
+        var controller = new WindowIconController(windows, new FakeIcons(), Assert.Fail);
+        controller.Reconcile(Config(), false);
+        Assert.True(controller.TryActivate("SERVER"));
+        Assert.Equal(windows.Items[1].Id, windows.Activated);
+        Assert.False(controller.TryActivate("serv"));
+        Assert.True(controller.TryMinimize("SERVER"));
+        Assert.Equal(windows.Items[1].Id, windows.Minimized);
+        Assert.False(controller.TryMinimize("serv"));
+    }
+
+    [Fact]
+    public void ActivationAndMinimizationCanTargetAnExactWindowIdentity()
+    {
+        var windows = new FakeWindows();
+        windows.Items.AddRange([new(1, "Server"), new(2, "Server")]);
+        var controller = new WindowIconController(windows, new FakeIcons(), Assert.Fail);
+        controller.Reconcile(Config(), false);
+
+        Assert.True(controller.TryActivate(windows.Items[0].Id));
+        Assert.Equal(windows.Items[0].Id, windows.Activated);
+        Assert.True(controller.TryMinimize(windows.Items[1].Id));
+        Assert.Equal(windows.Items[1].Id, windows.Minimized);
+
+        var stale = new WindowIdentity(99, 1, 10);
+        Assert.False(controller.TryActivate(stale));
+        Assert.False(controller.TryMinimize(stale));
     }
 }

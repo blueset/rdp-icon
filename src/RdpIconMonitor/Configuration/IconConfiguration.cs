@@ -5,13 +5,31 @@ namespace RdpIconMonitor.Configuration;
 
 public sealed record IconStyle(double? Hue, string? SmallText, string? LargeText);
 
-public sealed record IconRule(string Name, double? Hue = null, string? SmallText = null, string? LargeText = null)
+public sealed record IconRule(
+    string Name,
+    double? Hue = null,
+    string? SmallText = null,
+    string? LargeText = null,
+    string? Label = null)
 {
     [JsonIgnore]
     public IconStyle Style => new(Hue, SmallText, LargeText);
 }
 
-public sealed record IconConfiguration(IconRule[] Instances)
+public sealed record DockConfiguration(bool Enabled = false, bool ShowOnAllMonitors = false);
+
+public sealed record DockHostApp(
+    string Name,
+    string Process,
+    string? Label = null,
+    double? Hue = null,
+    bool TaskbarAlerts = false,
+    bool Enabled = true);
+
+public sealed record IconConfiguration(
+    IconRule[] Instances,
+    DockConfiguration? Dock = null,
+    DockHostApp[]? HostApps = null)
 {
     public static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -40,10 +58,31 @@ public sealed record IconConfiguration(IconRule[] Instances)
             {
                 Hue = rule.Hue is double value ? (value % 360 + 360) % 360 : null,
                 SmallText = NormalizeText(rule.SmallText, rule.Name),
-                LargeText = NormalizeText(rule.LargeText, rule.Name)
+                LargeText = NormalizeText(rule.LargeText, rule.Name),
+                Label = NormalizeText(rule.Label, rule.Name)
             });
         }
-        return new(rules.ToArray());
+        var hostNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var hostApps = new List<DockHostApp>();
+        foreach (var app in config.HostApps ?? [])
+        {
+            if (app is null || string.IsNullOrWhiteSpace(app.Name))
+                throw new InvalidDataException("Every host app needs a nonempty 'name'.");
+            if (string.IsNullOrWhiteSpace(app.Process))
+                throw new InvalidDataException($"Host app needs a nonempty 'process': {app.Name}");
+            if (app.Process.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException($"Host app process must omit '.exe': {app.Name}");
+            if (!hostNames.Add(app.Name))
+                throw new InvalidDataException($"Duplicate host app name: {app.Name}");
+            if (app.Hue is double hue && !double.IsFinite(hue))
+                throw new InvalidDataException($"Hue must be finite: {app.Name}");
+            hostApps.Add(app with
+            {
+                Hue = app.Hue is double value ? (value % 360 + 360) % 360 : null,
+                Label = NormalizeText(app.Label, app.Name)
+            });
+        }
+        return new(rules.ToArray(), config.Dock, hostApps.ToArray());
     }
 
     private static string? NormalizeText(string? text, string name)
